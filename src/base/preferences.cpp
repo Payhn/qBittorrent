@@ -693,6 +693,76 @@ void Preferences::setSchedulerDays(const Scheduler::Days days)
     setValue(u"Preferences/Scheduler/days"_s, days);
 }
 
+// TODO: Multi-schedule speed profiles framework implementations
+//
+// Implementation plan:
+// 1. Store profiles and schedules as JSON in QSettings under "Preferences/Scheduler/v2/"
+// 2. Provide migration path from old single-schedule system to new multi-schedule system
+// 3. Validate profiles on load (ensure referenced profiles exist in schedule entries)
+// 4. Provide default profiles: "Normal" (current limits) and "Alternative" (current alt limits)
+//
+// Example storage structure:
+// {
+//   "profiles": [
+//     {"name": "Normal", "download": -1, "upload": -1},
+//     {"name": "Night", "download": 102400, "upload": 51200},
+//     {"name": "Peak", "download": 1048576, "upload": 524288}
+//   ],
+//   "schedules": [
+//     {"start": "04:00", "end": "06:00", "days": 0, "profile": "Night"},
+//     {"start": "16:00", "end": "23:00", "days": 0, "profile": "Night"},
+//     {"start": "06:00", "end": "16:00", "days": 0, "profile": "Peak"}
+//   ],
+//   "default": "Normal"
+// }
+//
+// QList<SpeedSchedule::SpeedProfile> Preferences::getSpeedProfiles() const
+// {
+//     // TODO: Read from QSettings "Preferences/Scheduler/v2/profiles"
+//     // TODO: Parse JSON array into SpeedProfile objects
+//     // TODO: Return default profiles if none configured
+//     return {};
+// }
+//
+// void Preferences::setSpeedProfiles(const QList<SpeedSchedule::SpeedProfile> &profiles)
+// {
+//     // TODO: Validate profiles (unique names, valid limits)
+//     // TODO: Serialize profiles to JSON
+//     // TODO: Store in QSettings "Preferences/Scheduler/v2/profiles"
+//     // TODO: Emit changed signal if needed
+// }
+//
+// QList<SpeedSchedule::ScheduleEntry> Preferences::getScheduleEntries() const
+// {
+//     // TODO: Read from QSettings "Preferences/Scheduler/v2/schedules"
+//     // TODO: Parse JSON array into ScheduleEntry objects
+//     // TODO: Validate that referenced profiles exist
+//     // TODO: Sort by start time for efficient lookup
+//     return {};
+// }
+//
+// void Preferences::setScheduleEntries(const QList<SpeedSchedule::ScheduleEntry> &entries)
+// {
+//     // TODO: Validate entries (time ranges, profile references)
+//     // TODO: Optionally check for overlapping schedules and warn
+//     // TODO: Serialize entries to JSON
+//     // TODO: Store in QSettings "Preferences/Scheduler/v2/schedules"
+//     // TODO: Emit changed signal to trigger scheduler reload
+// }
+//
+// QString Preferences::getDefaultSpeedProfile() const
+// {
+//     // TODO: Read from QSettings "Preferences/Scheduler/v2/default"
+//     // TODO: Return "Normal" if not set
+//     return u"Normal"_s;
+// }
+//
+// void Preferences::setDefaultSpeedProfile(const QString &profileName)
+// {
+//     // TODO: Validate that profile exists
+//     // TODO: Store in QSettings "Preferences/Scheduler/v2/default"
+// }
+
 // Search
 bool Preferences::isSearchEnabled() const
 {
