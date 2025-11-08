@@ -235,6 +235,10 @@ namespace BitTorrent
         bool isBandwidthSchedulerEnabled() const override;
         void setBandwidthSchedulerEnabled(bool enabled) override;
 
+        // TODO: New multi-profile method
+        // This will be called by BandwidthScheduler when profile changes
+        // void applySpeedProfile(const QString &profileName);
+
         bool isPerformanceWarningEnabled() const override;
         void setPerformanceWarningEnabled(bool enable) override;
         int saveResumeDataInterval() const override;

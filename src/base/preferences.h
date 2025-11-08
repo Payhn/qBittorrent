@@ -176,6 +176,16 @@ public:
     Scheduler::Days getSchedulerDays() const;
     void setSchedulerDays(Scheduler::Days days);
 
+    // TODO: Multi-schedule speed profiles framework
+    // These methods will replace the simple binary alternative speed system
+    // with a flexible multi-profile scheduling system
+    // QList<SpeedSchedule::SpeedProfile> getSpeedProfiles() const;
+    // void setSpeedProfiles(const QList<SpeedSchedule::SpeedProfile> &profiles);
+    // QList<SpeedSchedule::ScheduleEntry> getScheduleEntries() const;
+    // void setScheduleEntries(const QList<SpeedSchedule::ScheduleEntry> &entries);
+    // QString getDefaultSpeedProfile() const;
+    // void setDefaultSpeedProfile(const QString &profileName);
+
     // Search
     bool isSearchEnabled() const;
     void setSearchEnabled(bool enabled);

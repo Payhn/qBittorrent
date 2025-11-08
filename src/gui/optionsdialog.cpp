@@ -1057,6 +1057,21 @@ void OptionsDialog::loadSpeedTabOptions()
     m_ui->timeEditScheduleTo->setTime(pref->getSchedulerEndTime());
     m_ui->comboBoxScheduleDays->setCurrentIndex(static_cast<int>(pref->getSchedulerDays()));
 
+    // TODO: Multi-profile scheduler UI loading
+    // When implementing the new system, replace the simple scheduler UI above with:
+    // 1. Load speed profiles from pref->getSpeedProfiles() into a table/list widget
+    // 2. Load schedule entries from pref->getScheduleEntries() into a separate table/list
+    // 3. Allow users to add/edit/remove profiles with custom names and limits
+    // 4. Allow users to create multiple schedule entries, each referencing a profile
+    // 5. Show current active profile in real-time (subscribe to session signal)
+    //
+    // UI Components needed:
+    // - QTableWidget or QListWidget for profiles (columns: Name, Download Limit, Upload Limit)
+    // - Add/Edit/Remove buttons for profiles
+    // - QTableWidget for schedules (columns: From, To, Days, Profile)
+    // - Add/Edit/Remove buttons for schedules
+    // - Combobox for default profile selection
+
     m_ui->checkLimituTPConnections->setChecked(session->isUTPRateLimited());
     m_ui->checkLimitTransportOverhead->setChecked(session->includeOverheadInLimits());
     m_ui->checkLimitLocalPeerRate->setChecked(!session->ignoreLimitsOnLAN());
@@ -1092,6 +1107,17 @@ void OptionsDialog::saveSpeedTabOptions() const
     pref->setSchedulerStartTime(m_ui->timeEditScheduleFrom->time());
     pref->setSchedulerEndTime(m_ui->timeEditScheduleTo->time());
     pref->setSchedulerDays(static_cast<Scheduler::Days>(m_ui->comboBoxScheduleDays->currentIndex()));
+
+    // TODO: Multi-profile scheduler UI saving
+    // When implementing the new system, save the profiles and schedules:
+    // 1. Collect all profiles from the profiles table/list widget
+    // 2. Validate profile names are unique and limits are valid
+    // 3. Call pref->setSpeedProfiles(profiles)
+    // 4. Collect all schedule entries from the schedules table/list
+    // 5. Validate schedule entries (times, profile references)
+    // 6. Call pref->setScheduleEntries(schedules)
+    // 7. Save default profile selection
+    // 8. Trigger scheduler reload in session
 
     session->setUTPRateLimited(m_ui->checkLimituTPConnections->isChecked());
     session->setIncludeOverheadInLimits(m_ui->checkLimitTransportOverhead->isChecked());

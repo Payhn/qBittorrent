@@ -286,6 +286,35 @@ void AppController::preferencesAction()
     data[u"schedule_to_min"_s] = end_time.minute();
     data[u"scheduler_days"_s] = static_cast<int>(pref->getSchedulerDays());
 
+    // TODO: Multi-profile scheduler WebUI API response
+    // Add new fields to support multiple profiles and schedules:
+    //
+    // QJsonArray profilesArray;
+    // for (const auto &profile : pref->getSpeedProfiles())
+    // {
+    //     QJsonObject profileObj;
+    //     profileObj[u"name"_s] = profile.name;
+    //     profileObj[u"download_limit"_s] = profile.downloadLimit;
+    //     profileObj[u"upload_limit"_s] = profile.uploadLimit;
+    //     profilesArray.append(profileObj);
+    // }
+    // data[u"speed_profiles"_s] = profilesArray;
+    //
+    // QJsonArray schedulesArray;
+    // for (const auto &entry : pref->getScheduleEntries())
+    // {
+    //     QJsonObject scheduleObj;
+    //     scheduleObj[u"start_hour"_s] = entry.startTime.hour();
+    //     scheduleObj[u"start_min"_s] = entry.startTime.minute();
+    //     scheduleObj[u"end_hour"_s] = entry.endTime.hour();
+    //     scheduleObj[u"end_min"_s] = entry.endTime.minute();
+    //     scheduleObj[u"days"_s] = static_cast<int>(entry.days);
+    //     scheduleObj[u"profile"_s] = entry.profileName;
+    //     schedulesArray.append(scheduleObj);
+    // }
+    // data[u"speed_schedules"_s] = schedulesArray;
+    // data[u"default_speed_profile"_s] = pref->getDefaultSpeedProfile();
+
     // Bittorrent
     // Privacy
     data[u"dht"_s] = session->isDHTEnabled();
@@ -804,6 +833,45 @@ void AppController::setPreferencesAction()
         pref->setSchedulerEndTime({hourIter.value().toInt(), minIter.value().toInt()});
     if (hasKey(u"scheduler_days"_s))
         pref->setSchedulerDays(static_cast<Scheduler::Days>(it.value().toInt()));
+
+    // TODO: Multi-profile scheduler WebUI API request handling
+    // Add handling for new profile and schedule data:
+    //
+    // if (hasKey(u"speed_profiles"_s))
+    // {
+    //     QList<SpeedSchedule::SpeedProfile> profiles;
+    //     const QJsonArray profilesArray = it.value().toArray();
+    //     for (const QJsonValue &val : profilesArray)
+    //     {
+    //         const QJsonObject obj = val.toObject();
+    //         SpeedSchedule::SpeedProfile profile;
+    //         profile.name = obj[u"name"_s].toString();
+    //         profile.downloadLimit = obj[u"download_limit"_s].toInt();
+    //         profile.uploadLimit = obj[u"upload_limit"_s].toInt();
+    //         profiles.append(profile);
+    //     }
+    //     pref->setSpeedProfiles(profiles);
+    // }
+    //
+    // if (hasKey(u"speed_schedules"_s))
+    // {
+    //     QList<SpeedSchedule::ScheduleEntry> schedules;
+    //     const QJsonArray schedulesArray = it.value().toArray();
+    //     for (const QJsonValue &val : schedulesArray)
+    //     {
+    //         const QJsonObject obj = val.toObject();
+    //         SpeedSchedule::ScheduleEntry entry;
+    //         entry.startTime = QTime(obj[u"start_hour"_s].toInt(), obj[u"start_min"_s].toInt());
+    //         entry.endTime = QTime(obj[u"end_hour"_s].toInt(), obj[u"end_min"_s].toInt());
+    //         entry.days = static_cast<Scheduler::Days>(obj[u"days"_s].toInt());
+    //         entry.profileName = obj[u"profile"_s].toString();
+    //         schedules.append(entry);
+    //     }
+    //     pref->setScheduleEntries(schedules);
+    // }
+    //
+    // if (hasKey(u"default_speed_profile"_s))
+    //     pref->setDefaultSpeedProfile(it.value().toString());
 
     // Bittorrent
     // Privacy
