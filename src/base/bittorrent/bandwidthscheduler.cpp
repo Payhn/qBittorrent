@@ -51,6 +51,10 @@ void BandwidthScheduler::start()
     m_lastAlternative = isTimeForAlternative();
     emit bandwidthLimitRequested(m_lastAlternative);
 
+    // Emit initial speed profile
+    m_lastActiveProfile = getCurrentSpeedProfile();
+    emit speedProfileRequested(m_lastActiveProfile);
+
     // Timeout regularly to accommodate for external system clock changes
     // eg from the user or from a timesync utility
     m_timer.start(30s);

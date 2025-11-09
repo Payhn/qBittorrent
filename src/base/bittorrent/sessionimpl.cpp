@@ -98,6 +98,7 @@
 #include "bencoderesumedatastorage.h"
 #include "customstorage.h"
 #include "dbresumedatastorage.h"
+#include "speedprofile.h"
 #include "downloadpriority.h"
 #include "extensiondata.h"
 #include "filesearcher.h"
@@ -2337,6 +2338,8 @@ void SessionImpl::enableBandwidthScheduler()
         m_bwScheduler = new BandwidthScheduler(this);
         connect(m_bwScheduler.data(), &BandwidthScheduler::bandwidthLimitRequested
                 , this, &SessionImpl::setAltGlobalSpeedLimitEnabled);
+        connect(m_bwScheduler.data(), &BandwidthScheduler::speedProfileRequested
+                , this, &SessionImpl::applySpeedProfile);
     }
     m_bwScheduler->start();
 }
@@ -3619,53 +3622,35 @@ void SessionImpl::setBandwidthSchedulerEnabled(const bool enabled)
     }
 }
 
-// TODO: Multi-profile speed limiting implementation
-//
-// void SessionImpl::applySpeedProfile(const QString &profileName)
-// {
-//     // Implementation logic:
-//     // 1. Get all speed profiles from Preferences
-//     // 2. Find the profile matching profileName
-//     // 3. If not found, use default profile or current settings
-//     // 4. Apply the profile's download and upload limits
-//     // 5. Optionally emit a signal for UI updates
-//     //
-//     // Example implementation:
-//     // const Preferences *const pref = Preferences::instance();
-//     // const QList<SpeedSchedule::SpeedProfile> profiles = pref->getSpeedProfiles();
-//     //
-//     // // Find the requested profile
-//     // auto it = std::find_if(profiles.cbegin(), profiles.cend(),
-//     //     [&profileName](const SpeedSchedule::SpeedProfile &p) { return p.name == profileName; });
-//     //
-//     // if (it == profiles.cend())
-//     // {
-//     //     LogMsg(tr("Speed profile '%1' not found, using default").arg(profileName), Log::WARNING);
-//     //     return;
-//     // }
-//     //
-//     // const SpeedSchedule::SpeedProfile &profile = *it;
-//     //
-//     // // Apply limits directly to libtorrent session
-//     // lt::settings_pack settingsPack;
-//     // settingsPack.set_int(lt::settings_pack::download_rate_limit, profile.downloadLimit);
-//     // settingsPack.set_int(lt::settings_pack::upload_rate_limit, profile.uploadLimit);
-//     // m_nativeSession->apply_settings(std::move(settingsPack));
-//     //
-//     // // Log the change
-//     // LogMsg(tr("Applied speed profile: %1 (D: %2, U: %3)")
-//     //     .arg(profileName)
-//     //     .arg(profile.downloadLimit == -1 ? tr("unlimited") : QString::number(profile.downloadLimit))
-//     //     .arg(profile.uploadLimit == -1 ? tr("unlimited") : QString::number(profile.uploadLimit)));
-//     //
-//     // // TODO: Emit signal for UI updates
-//     // // emit speedProfileChanged(profileName);
-// }
-//
-// Note: When implementing, also update enableBandwidthScheduler() around line 2339
-// to connect the new signal:
-//     connect(m_bwScheduler.data(), &BandwidthScheduler::speedProfileRequested
-//             , this, &SessionImpl::applySpeedProfile);
+void SessionImpl::applySpeedProfile(const QString &profileName)
+{
+    const Preferences *const pref = Preferences::instance();
+    const QList<SpeedSchedule::SpeedProfile> profiles = pref->getSpeedProfiles();
+
+    // Find the requested profile
+    auto it = std::find_if(profiles.cbegin(), profiles.cend(),
+        [&profileName](const SpeedSchedule::SpeedProfile &p) { return p.name == profileName; });
+
+    if (it == profiles.cend())
+    {
+        LogMsg(tr("Speed profile '%1' not found, ignoring").arg(profileName), Log::WARNING);
+        return;
+    }
+
+    const SpeedSchedule::SpeedProfile &profile = *it;
+
+    // Apply limits directly to libtorrent session
+    lt::settings_pack settingsPack;
+    settingsPack.set_int(lt::settings_pack::download_rate_limit, profile.downloadLimit);
+    settingsPack.set_int(lt::settings_pack::upload_rate_limit, profile.uploadLimit);
+    m_nativeSession->apply_settings(std::move(settingsPack));
+
+    // Log the change
+    const QString downloadStr = (profile.downloadLimit == -1) ? tr("unlimited") : tr("%1/s").arg(Utils::Number::friendlyUnit(profile.downloadLimit));
+    const QString uploadStr = (profile.uploadLimit == -1) ? tr("unlimited") : tr("%1/s").arg(Utils::Number::friendlyUnit(profile.uploadLimit));
+    LogMsg(tr("Applied speed profile: %1 (Down: %2, Up: %3)")
+        .arg(profileName, downloadStr, uploadStr));
+}
 
 bool SessionImpl::isPerformanceWarningEnabled() const
 {
