@@ -43,22 +43,15 @@ public:
 
 signals:
     void bandwidthLimitRequested(bool alternative);
-
-    // TODO: New multi-profile signal
-    // This will replace bandwidthLimitRequested(bool) once implemented
-    // void speedProfileRequested(const QString &profileName);
+    void speedProfileRequested(const QString &profileName);
 
 private:
     bool isTimeForAlternative() const;
+    QString getCurrentSpeedProfile() const;
+    bool isDayMatch(Scheduler::Days schedulerDays, int currentDay) const;
     void onTimeout();
-
-    // TODO: New multi-profile method
-    // This will replace isTimeForAlternative() once implemented
-    // QString getCurrentSpeedProfile() const;
 
     QTimer m_timer;
     bool m_lastAlternative = false;
-
-    // TODO: Track last active profile to detect changes
-    // QString m_lastActiveProfile;
+    QString m_lastActiveProfile;
 };
