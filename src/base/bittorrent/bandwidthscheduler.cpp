@@ -36,6 +36,7 @@
 #include <QTime>
 
 #include "base/preferences.h"
+#include "speedprofile.h"
 
 using namespace std::chrono_literals;
 
@@ -110,95 +111,83 @@ bool BandwidthScheduler::isTimeForAlternative() const
     return alternative;
 }
 
+QString BandwidthScheduler::getCurrentSpeedProfile() const
+{
+    const Preferences *const pref = Preferences::instance();
+    const QList<SpeedSchedule::ScheduleEntry> schedules = pref->getScheduleEntries();
+    const QTime now = QTime::currentTime();
+    const int day = QDate::currentDate().dayOfWeek();
+
+    // Iterate through all schedule entries to find a match
+    for (const SpeedSchedule::ScheduleEntry &entry : schedules)
+    {
+        // Check if current day matches the schedule's days setting
+        if (!isDayMatch(entry.days, day))
+            continue;
+
+        // Check if current time falls within the schedule's time range
+        bool inTimeRange = false;
+        if (entry.startTime <= entry.endTime)
+        {
+            // Normal range (e.g., 06:00 to 16:00)
+            inTimeRange = (now >= entry.startTime && now <= entry.endTime);
+        }
+        else
+        {
+            // Wrap-around range (e.g., 23:00 to 01:00)
+            inTimeRange = (now >= entry.startTime || now <= entry.endTime);
+        }
+
+        if (inTimeRange)
+            return entry.profileName;
+    }
+
+    // No matching schedule found, return default profile
+    return pref->getDefaultSpeedProfile();
+}
+
+bool BandwidthScheduler::isDayMatch(Scheduler::Days schedulerDays, int currentDay) const
+{
+    switch (schedulerDays)
+    {
+    case Scheduler::Days::EveryDay:
+        return true;
+    case Scheduler::Days::Weekday:
+        return (currentDay >= 1 && currentDay <= 5);
+    case Scheduler::Days::Weekend:
+        return (currentDay == 6 || currentDay == 7);
+    case Scheduler::Days::Monday:
+    case Scheduler::Days::Tuesday:
+    case Scheduler::Days::Wednesday:
+    case Scheduler::Days::Thursday:
+    case Scheduler::Days::Friday:
+    case Scheduler::Days::Saturday:
+    case Scheduler::Days::Sunday:
+        {
+            const int offset = static_cast<int>(Scheduler::Days::Monday) - 1;
+            const int dayOfWeek = static_cast<int>(schedulerDays) - offset;
+            return currentDay == dayOfWeek;
+        }
+    default:
+        return false;
+    }
+}
+
 void BandwidthScheduler::onTimeout()
 {
+    // Keep existing alternative speed logic for backward compatibility
     const bool alternative = isTimeForAlternative();
-
     if (alternative != m_lastAlternative)
     {
         m_lastAlternative = alternative;
         emit bandwidthLimitRequested(alternative);
     }
 
-    // TODO: Multi-profile implementation
-    // Once Preferences::getSpeedProfiles() and getScheduleEntries() are implemented,
-    // replace the above with:
-    //
-    // const QString currentProfile = getCurrentSpeedProfile();
-    // if (currentProfile != m_lastActiveProfile)
-    // {
-    //     m_lastActiveProfile = currentProfile;
-    //     emit speedProfileRequested(currentProfile);
-    // }
+    // New multi-profile logic
+    const QString currentProfile = getCurrentSpeedProfile();
+    if (currentProfile != m_lastActiveProfile)
+    {
+        m_lastActiveProfile = currentProfile;
+        emit speedProfileRequested(currentProfile);
+    }
 }
-
-// TODO: New method for multi-profile system
-//
-// QString BandwidthScheduler::getCurrentSpeedProfile() const
-// {
-//     const Preferences *const pref = Preferences::instance();
-//     const QList<SpeedSchedule::ScheduleEntry> schedules = pref->getScheduleEntries();
-//     const QTime now = QTime::currentTime();
-//     const int day = QDate::currentDate().dayOfWeek();
-//
-//     // Implementation logic:
-//     // 1. Iterate through all schedule entries
-//     // 2. For each entry, check if current day matches entry.days
-//     // 3. Check if current time falls within entry.startTime to entry.endTime
-//     //    - Handle wrap-around (e.g., 23:00 to 01:00)
-//     // 4. If match found, return entry.profileName
-//     // 5. If multiple matches (overlapping schedules), use first match or priority system
-//     // 6. If no match, return default profile from pref->getDefaultSpeedProfile()
-//     //
-//     // Example implementation:
-//     // for (const SpeedSchedule::ScheduleEntry &entry : schedules)
-//     // {
-//     //     if (!isDayMatch(entry.days, day))
-//     //         continue;
-//     //
-//     //     bool inTimeRange = false;
-//     //     if (entry.startTime <= entry.endTime)
-//     //     {
-//     //         // Normal range (e.g., 06:00 to 16:00)
-//     //         inTimeRange = (now >= entry.startTime && now <= entry.endTime);
-//     //     }
-//     //     else
-//     //     {
-//     //         // Wrap-around range (e.g., 23:00 to 01:00)
-//     //         inTimeRange = (now >= entry.startTime || now <= entry.endTime);
-//     //     }
-//     //
-//     //     if (inTimeRange)
-//     //         return entry.profileName;
-//     // }
-//     //
-//     // return pref->getDefaultSpeedProfile();
-// }
-//
-// Helper method to check if current day matches schedule days setting:
-// bool BandwidthScheduler::isDayMatch(Scheduler::Days schedulerDays, int currentDay) const
-// {
-//     switch (schedulerDays)
-//     {
-//     case Scheduler::Days::EveryDay:
-//         return true;
-//     case Scheduler::Days::Weekday:
-//         return (currentDay >= 1 && currentDay <= 5);
-//     case Scheduler::Days::Weekend:
-//         return (currentDay == 6 || currentDay == 7);
-//     case Scheduler::Days::Monday:
-//     case Scheduler::Days::Tuesday:
-//     case Scheduler::Days::Wednesday:
-//     case Scheduler::Days::Thursday:
-//     case Scheduler::Days::Friday:
-//     case Scheduler::Days::Saturday:
-//     case Scheduler::Days::Sunday:
-//         {
-//             const int offset = static_cast<int>(Scheduler::Days::Monday) - 1;
-//             const int dayOfWeek = static_cast<int>(schedulerDays) - offset;
-//             return currentDay == dayOfWeek;
-//         }
-//     default:
-//         return false;
-//     }
-// }
