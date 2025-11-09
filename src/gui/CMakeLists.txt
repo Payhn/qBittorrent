@@ -24,8 +24,10 @@ qt_wrap_ui(UI_HEADERS
     search/pluginsourcedialog.ui
     search/searchjobwidget.ui
     search/searchwidget.ui
+    scheduleentrydialog.ui
     shutdownconfirmdialog.ui
     speedlimitdialog.ui
+    speedprofiledialog.ui
     statsdialog.ui
     torrentcategorydialog.ui
     torrentcreatordialog.ui
@@ -97,8 +99,10 @@ add_library(qbt_gui STATIC
     search/searchjobwidget.h
     search/searchsortmodel.h
     search/searchwidget.h
+    scheduleentrydialog.h
     shutdownconfirmdialog.h
     speedlimitdialog.h
+    speedprofiledialog.h
     statsdialog.h
     statusbar.h
     torrentcategorydialog.h
@@ -198,8 +202,10 @@ add_library(qbt_gui STATIC
     search/searchjobwidget.cpp
     search/searchsortmodel.cpp
     search/searchwidget.cpp
+    scheduleentrydialog.cpp
     shutdownconfirmdialog.cpp
     speedlimitdialog.cpp
+    speedprofiledialog.cpp
     statsdialog.cpp
     statusbar.cpp
     torrentcategorydialog.cpp

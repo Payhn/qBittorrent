@@ -106,6 +106,18 @@ private slots:
     void on_removeWatchedFolderButton_clicked();
     void setLocale(const QString &localeStr);
 
+    // Speed profile management
+    void on_addProfileButton_clicked();
+    void on_editProfileButton_clicked();
+    void on_removeProfileButton_clicked();
+    void onProfilesTableSelectionChanged();
+
+    // Schedule entry management
+    void on_addScheduleButton_clicked();
+    void on_editScheduleButton_clicked();
+    void on_removeScheduleButton_clicked();
+    void onSchedulesTableSelectionChanged();
+
 #ifndef DISABLE_WEBUI
     void webUIHttpsCertChanged(const Path &path);
     void webUIHttpsKeyChanged(const Path &path);
@@ -134,6 +146,7 @@ private:
 
     void loadSpeedTabOptions();
     void saveSpeedTabOptions() const;
+    void setupSpeedProfileWidgets();
 
     void loadBittorrentTabOptions();
     void saveBittorrentTabOptions() const;
@@ -214,6 +227,19 @@ private:
     AdvancedSettings *m_advancedSettings = nullptr;
 
     bool m_refreshingIpFilter = false;
+
+    // Speed profile management widgets
+    class QTableWidget *m_profilesTable = nullptr;
+    class QPushButton *m_addProfileButton = nullptr;
+    class QPushButton *m_editProfileButton = nullptr;
+    class QPushButton *m_removeProfileButton = nullptr;
+
+    // Schedule entry management widgets
+    class QTableWidget *m_schedulesTable = nullptr;
+    class QPushButton *m_addScheduleButton = nullptr;
+    class QPushButton *m_editScheduleButton = nullptr;
+    class QPushButton *m_removeScheduleButton = nullptr;
+    class QComboBox *m_defaultProfileCombo = nullptr;
 
 #ifndef DISABLE_WEBUI
     QString m_currentAPIKey;
