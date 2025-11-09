@@ -35,6 +35,9 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QList>
 #include <QLocale>
 #include <QNetworkCookie>
@@ -42,6 +45,7 @@
 #include <QTime>
 
 #include "algorithm.h"
+#include "bittorrent/speedprofile.h"
 #include "global.h"
 #include "path.h"
 #include "profile.h"
@@ -693,75 +697,154 @@ void Preferences::setSchedulerDays(const Scheduler::Days days)
     setValue(u"Preferences/Scheduler/days"_s, days);
 }
 
-// TODO: Multi-schedule speed profiles framework implementations
-//
-// Implementation plan:
-// 1. Store profiles and schedules as JSON in QSettings under "Preferences/Scheduler/v2/"
-// 2. Provide migration path from old single-schedule system to new multi-schedule system
-// 3. Validate profiles on load (ensure referenced profiles exist in schedule entries)
-// 4. Provide default profiles: "Normal" (current limits) and "Alternative" (current alt limits)
-//
-// Example storage structure:
-// {
-//   "profiles": [
-//     {"name": "Normal", "download": -1, "upload": -1},
-//     {"name": "Night", "download": 102400, "upload": 51200},
-//     {"name": "Peak", "download": 1048576, "upload": 524288}
-//   ],
-//   "schedules": [
-//     {"start": "04:00", "end": "06:00", "days": 0, "profile": "Night"},
-//     {"start": "16:00", "end": "23:00", "days": 0, "profile": "Night"},
-//     {"start": "06:00", "end": "16:00", "days": 0, "profile": "Peak"}
-//   ],
-//   "default": "Normal"
-// }
-//
-// QList<SpeedSchedule::SpeedProfile> Preferences::getSpeedProfiles() const
-// {
-//     // TODO: Read from QSettings "Preferences/Scheduler/v2/profiles"
-//     // TODO: Parse JSON array into SpeedProfile objects
-//     // TODO: Return default profiles if none configured
-//     return {};
-// }
-//
-// void Preferences::setSpeedProfiles(const QList<SpeedSchedule::SpeedProfile> &profiles)
-// {
-//     // TODO: Validate profiles (unique names, valid limits)
-//     // TODO: Serialize profiles to JSON
-//     // TODO: Store in QSettings "Preferences/Scheduler/v2/profiles"
-//     // TODO: Emit changed signal if needed
-// }
-//
-// QList<SpeedSchedule::ScheduleEntry> Preferences::getScheduleEntries() const
-// {
-//     // TODO: Read from QSettings "Preferences/Scheduler/v2/schedules"
-//     // TODO: Parse JSON array into ScheduleEntry objects
-//     // TODO: Validate that referenced profiles exist
-//     // TODO: Sort by start time for efficient lookup
-//     return {};
-// }
-//
-// void Preferences::setScheduleEntries(const QList<SpeedSchedule::ScheduleEntry> &entries)
-// {
-//     // TODO: Validate entries (time ranges, profile references)
-//     // TODO: Optionally check for overlapping schedules and warn
-//     // TODO: Serialize entries to JSON
-//     // TODO: Store in QSettings "Preferences/Scheduler/v2/schedules"
-//     // TODO: Emit changed signal to trigger scheduler reload
-// }
-//
-// QString Preferences::getDefaultSpeedProfile() const
-// {
-//     // TODO: Read from QSettings "Preferences/Scheduler/v2/default"
-//     // TODO: Return "Normal" if not set
-//     return u"Normal"_s;
-// }
-//
-// void Preferences::setDefaultSpeedProfile(const QString &profileName)
-// {
-//     // TODO: Validate that profile exists
-//     // TODO: Store in QSettings "Preferences/Scheduler/v2/default"
-// }
+// Multi-schedule speed profiles framework implementations
+
+QList<SpeedSchedule::SpeedProfile> Preferences::getSpeedProfiles() const
+{
+    const QString jsonStr = value(u"Preferences/Scheduler/v2/profiles"_s, QString());
+
+    // Return empty list if no profiles configured yet
+    if (jsonStr.isEmpty())
+        return {};
+
+    const QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
+    if (!doc.isArray())
+        return {};
+
+    QList<SpeedSchedule::SpeedProfile> profiles;
+    const QJsonArray arr = doc.array();
+
+    for (const QJsonValue &val : arr)
+    {
+        if (!val.isObject())
+            continue;
+
+        SpeedSchedule::SpeedProfile profile = SpeedSchedule::SpeedProfile::fromJsonObject(val.toObject());
+        if (profile.isValid())
+            profiles.append(profile);
+    }
+
+    return profiles;
+}
+
+void Preferences::setSpeedProfiles(const QList<SpeedSchedule::SpeedProfile> &profiles)
+{
+    // Validate profiles: check for unique names and valid limits
+    QStringList names;
+    for (const SpeedSchedule::SpeedProfile &profile : profiles)
+    {
+        if (!profile.isValid())
+            return; // Invalid profile, abort
+
+        if (names.contains(profile.name))
+            return; // Duplicate name, abort
+
+        names.append(profile.name);
+    }
+
+    // Serialize profiles to JSON
+    QJsonArray arr;
+    for (const SpeedSchedule::SpeedProfile &profile : profiles)
+    {
+        arr.append(profile.toJsonObject());
+    }
+
+    const QJsonDocument doc(arr);
+    const QString jsonStr = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    // Store in QSettings
+    setValue(u"Preferences/Scheduler/v2/profiles"_s, jsonStr);
+}
+
+QList<SpeedSchedule::ScheduleEntry> Preferences::getScheduleEntries() const
+{
+    const QString jsonStr = value(u"Preferences/Scheduler/v2/schedules"_s, QString());
+
+    // Return empty list if no schedules configured yet
+    if (jsonStr.isEmpty())
+        return {};
+
+    const QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
+    if (!doc.isArray())
+        return {};
+
+    QList<SpeedSchedule::ScheduleEntry> entries;
+    const QJsonArray arr = doc.array();
+
+    for (const QJsonValue &val : arr)
+    {
+        if (!val.isObject())
+            continue;
+
+        SpeedSchedule::ScheduleEntry entry = SpeedSchedule::ScheduleEntry::fromJsonObject(val.toObject());
+        if (entry.isValid())
+            entries.append(entry);
+    }
+
+    return entries;
+}
+
+void Preferences::setScheduleEntries(const QList<SpeedSchedule::ScheduleEntry> &entries)
+{
+    // Validate entries
+    const QList<SpeedSchedule::SpeedProfile> profiles = getSpeedProfiles();
+    QStringList profileNames;
+    for (const SpeedSchedule::SpeedProfile &profile : profiles)
+    {
+        profileNames.append(profile.name);
+    }
+
+    for (const SpeedSchedule::ScheduleEntry &entry : entries)
+    {
+        if (!entry.isValid())
+            return; // Invalid entry, abort
+
+        // Validate that referenced profile exists
+        if (!profileNames.contains(entry.profileName))
+            return; // Referenced profile doesn't exist, abort
+    }
+
+    // Serialize entries to JSON
+    QJsonArray arr;
+    for (const SpeedSchedule::ScheduleEntry &entry : entries)
+    {
+        arr.append(entry.toJsonObject());
+    }
+
+    const QJsonDocument doc(arr);
+    const QString jsonStr = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+
+    // Store in QSettings
+    setValue(u"Preferences/Scheduler/v2/schedules"_s, jsonStr);
+}
+
+QString Preferences::getDefaultSpeedProfile() const
+{
+    return value(u"Preferences/Scheduler/v2/default"_s, u"Normal"_s);
+}
+
+void Preferences::setDefaultSpeedProfile(const QString &profileName)
+{
+    if (profileName == getDefaultSpeedProfile())
+        return;
+
+    // Validate that profile exists
+    const QList<SpeedSchedule::SpeedProfile> profiles = getSpeedProfiles();
+    bool profileExists = false;
+    for (const SpeedSchedule::SpeedProfile &profile : profiles)
+    {
+        if (profile.name == profileName)
+        {
+            profileExists = true;
+            break;
+        }
+    }
+
+    if (!profileExists)
+        return; // Profile doesn't exist, abort
+
+    setValue(u"Preferences/Scheduler/v2/default"_s, profileName);
+}
 
 // Search
 bool Preferences::isSearchEnabled() const

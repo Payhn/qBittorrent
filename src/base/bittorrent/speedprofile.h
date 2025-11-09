@@ -30,6 +30,7 @@
 
 #include <QString>
 #include <QTime>
+#include <QJsonObject>
 
 #include "base/preferences.h"
 
@@ -48,9 +49,38 @@ namespace SpeedSchedule
         int downloadLimit;      // Download speed limit in bytes/second (-1 for unlimited)
         int uploadLimit;        // Upload speed limit in bytes/second (-1 for unlimited)
 
-        // TODO: Add equality operators for comparison
-        // TODO: Add serialization methods (toJson/fromJson) for Preferences storage
-        // TODO: Add validation methods (e.g., isValid(), validateLimits())
+        bool operator==(const SpeedProfile &other) const
+        {
+            return (name == other.name) && (downloadLimit == other.downloadLimit) && (uploadLimit == other.uploadLimit);
+        }
+
+        bool operator!=(const SpeedProfile &other) const
+        {
+            return !(*this == other);
+        }
+
+        bool isValid() const
+        {
+            return !name.isEmpty() && (downloadLimit >= -1) && (uploadLimit >= -1);
+        }
+
+        QJsonObject toJsonObject() const
+        {
+            return {
+                {u"name"_s, name},
+                {u"download"_s, downloadLimit},
+                {u"upload"_s, uploadLimit}
+            };
+        }
+
+        static SpeedProfile fromJsonObject(const QJsonObject &obj)
+        {
+            SpeedProfile profile;
+            profile.name = obj.value(u"name"_s).toString();
+            profile.downloadLimit = obj.value(u"download"_s).toInt(-1);
+            profile.uploadLimit = obj.value(u"upload"_s).toInt(-1);
+            return profile;
+        }
     };
 
     /**
@@ -67,10 +97,41 @@ namespace SpeedSchedule
         Scheduler::Days days;   // Days when this schedule is active
         QString profileName;    // Name of the SpeedProfile to apply during this time
 
-        // TODO: Add equality operators for comparison
-        // TODO: Add serialization methods (toJson/fromJson) for Preferences storage
-        // TODO: Add validation methods (e.g., isValid(), doesOverlap())
-        // TODO: Add method to check if a given QDateTime falls within this schedule
+        bool operator==(const ScheduleEntry &other) const
+        {
+            return (startTime == other.startTime) && (endTime == other.endTime)
+                && (days == other.days) && (profileName == other.profileName);
+        }
+
+        bool operator!=(const ScheduleEntry &other) const
+        {
+            return !(*this == other);
+        }
+
+        bool isValid() const
+        {
+            return startTime.isValid() && endTime.isValid() && !profileName.isEmpty();
+        }
+
+        QJsonObject toJsonObject() const
+        {
+            return {
+                {u"start"_s, startTime.toString(u"HH:mm"_s)},
+                {u"end"_s, endTime.toString(u"HH:mm"_s)},
+                {u"days"_s, static_cast<int>(days)},
+                {u"profile"_s, profileName}
+            };
+        }
+
+        static ScheduleEntry fromJsonObject(const QJsonObject &obj)
+        {
+            ScheduleEntry entry;
+            entry.startTime = QTime::fromString(obj.value(u"start"_s).toString(), u"HH:mm"_s);
+            entry.endTime = QTime::fromString(obj.value(u"end"_s).toString(), u"HH:mm"_s);
+            entry.days = static_cast<Scheduler::Days>(obj.value(u"days"_s).toInt());
+            entry.profileName = obj.value(u"profile"_s).toString();
+            return entry;
+        }
     };
 
     // TODO: Add helper functions for schedule conflict detection
