@@ -37,14 +37,21 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
 #include <QDebug>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QEvent>
 #include <QFileDialog>
+#include <QGroupBox>
+#include <QHeaderView>
+#include <QLabel>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QSystemTrayIcon>
+#include <QTableWidget>
 #include <QTranslator>
+#include <QVBoxLayout>
 
 #ifdef Q_OS_WIN
 #include <QStyleFactory>
@@ -52,6 +59,7 @@
 
 #include "base/bittorrent/session.h"
 #include "base/bittorrent/sharelimitaction.h"
+#include "base/bittorrent/speedprofile.h"
 #include "base/exceptions.h"
 #include "base/global.h"
 #include "base/net/downloadmanager.h"
@@ -78,6 +86,8 @@
 #include "interfaces/iguiapplication.h"
 #include "ipsubnetwhitelistoptionsdialog.h"
 #include "rss/automatedrssdownloader.h"
+#include "scheduleentrydialog.h"
+#include "speedprofiledialog.h"
 #include "ui_optionsdialog.h"
 #include "uithemedialog.h"
 #include "uithememanager.h"
@@ -194,6 +204,9 @@ OptionsDialog::OptionsDialog(IGUIApplication *app, QWidget *parent)
     }
 
     connect(m_ui->tabSelection, &QListWidget::currentItemChanged, this, &ThisType::changePage);
+
+    // Setup speed profile widgets before loading options
+    setupSpeedProfileWidgets();
 
     // Load options
     loadBehaviorTabOptions();
@@ -1057,20 +1070,82 @@ void OptionsDialog::loadSpeedTabOptions()
     m_ui->timeEditScheduleTo->setTime(pref->getSchedulerEndTime());
     m_ui->comboBoxScheduleDays->setCurrentIndex(static_cast<int>(pref->getSchedulerDays()));
 
-    // TODO: Multi-profile scheduler UI loading
-    // When implementing the new system, replace the simple scheduler UI above with:
-    // 1. Load speed profiles from pref->getSpeedProfiles() into a table/list widget
-    // 2. Load schedule entries from pref->getScheduleEntries() into a separate table/list
-    // 3. Allow users to add/edit/remove profiles with custom names and limits
-    // 4. Allow users to create multiple schedule entries, each referencing a profile
-    // 5. Show current active profile in real-time (subscribe to session signal)
-    //
-    // UI Components needed:
-    // - QTableWidget or QListWidget for profiles (columns: Name, Download Limit, Upload Limit)
-    // - Add/Edit/Remove buttons for profiles
-    // - QTableWidget for schedules (columns: From, To, Days, Profile)
-    // - Add/Edit/Remove buttons for schedules
-    // - Combobox for default profile selection
+    // Load speed profiles into table
+    if (m_profilesTable)
+    {
+        m_profilesTable->setRowCount(0); // Clear existing rows
+        const QList<SpeedSchedule::SpeedProfile> profiles = pref->getSpeedProfiles();
+        for (const SpeedSchedule::SpeedProfile &profile : profiles)
+        {
+            const int row = m_profilesTable->rowCount();
+            m_profilesTable->insertRow(row);
+
+            auto *nameItem = new QTableWidgetItem(profile.name);
+            auto *downloadItem = new QTableWidgetItem(profile.downloadLimit == -1 ? tr("∞") : QString::number(profile.downloadLimit / 1024));
+            auto *uploadItem = new QTableWidgetItem(profile.uploadLimit == -1 ? tr("∞") : QString::number(profile.uploadLimit / 1024));
+
+            downloadItem->setData(Qt::UserRole, profile.downloadLimit / 1024);
+            uploadItem->setData(Qt::UserRole, profile.uploadLimit / 1024);
+
+            m_profilesTable->setItem(row, 0, nameItem);
+            m_profilesTable->setItem(row, 1, downloadItem);
+            m_profilesTable->setItem(row, 2, uploadItem);
+
+            // Add to default profile combo
+            m_defaultProfileCombo->addItem(profile.name);
+        }
+
+        // Set default profile
+        const QString defaultProfile = pref->getDefaultSpeedProfile();
+        const int defaultIndex = m_defaultProfileCombo->findText(defaultProfile);
+        if (defaultIndex >= 0)
+            m_defaultProfileCombo->setCurrentIndex(defaultIndex);
+    }
+
+    // Load schedule entries into table
+    if (m_schedulesTable)
+    {
+        m_schedulesTable->setRowCount(0); // Clear existing rows
+        const QList<SpeedSchedule::ScheduleEntry> entries = pref->getScheduleEntries();
+        for (const SpeedSchedule::ScheduleEntry &entry : entries)
+        {
+            const int row = m_schedulesTable->rowCount();
+            m_schedulesTable->insertRow(row);
+
+            auto *startItem = new QTableWidgetItem(entry.startTime.toString(u"HH:mm"_s));
+            auto *endItem = new QTableWidgetItem(entry.endTime.toString(u"HH:mm"_s));
+
+            // Convert days enum to display string
+            QString daysText;
+            switch (entry.days)
+            {
+            case Scheduler::Days::EveryDay:
+                daysText = tr("Every day");
+                break;
+            case Scheduler::Days::Weekday:
+                daysText = tr("Weekdays");
+                break;
+            case Scheduler::Days::Weekend:
+                daysText = tr("Weekends");
+                break;
+            default:
+                daysText = translatedWeekdayNames().value(static_cast<int>(entry.days), tr("Every day"));
+                break;
+            }
+
+            auto *daysItem = new QTableWidgetItem(daysText);
+            auto *profileItem = new QTableWidgetItem(entry.profileName);
+
+            startItem->setData(Qt::UserRole, entry.startTime);
+            endItem->setData(Qt::UserRole, entry.endTime);
+            daysItem->setData(Qt::UserRole, static_cast<int>(entry.days));
+
+            m_schedulesTable->setItem(row, 0, startItem);
+            m_schedulesTable->setItem(row, 1, endItem);
+            m_schedulesTable->setItem(row, 2, daysItem);
+            m_schedulesTable->setItem(row, 3, profileItem);
+        }
+    }
 
     m_ui->checkLimituTPConnections->setChecked(session->isUTPRateLimited());
     m_ui->checkLimitTransportOverhead->setChecked(session->includeOverheadInLimits());
@@ -1122,6 +1197,343 @@ void OptionsDialog::saveSpeedTabOptions() const
     session->setUTPRateLimited(m_ui->checkLimituTPConnections->isChecked());
     session->setIncludeOverheadInLimits(m_ui->checkLimitTransportOverhead->isChecked());
     session->setIgnoreLimitsOnLAN(!m_ui->checkLimitLocalPeerRate->isChecked());
+
+    // Save speed profiles
+    if (m_profilesTable)
+    {
+        QList<SpeedSchedule::SpeedProfile> profiles;
+        for (int row = 0; row < m_profilesTable->rowCount(); ++row)
+        {
+            SpeedSchedule::SpeedProfile profile;
+            profile.name = m_profilesTable->item(row, 0)->text();
+            profile.downloadLimit = m_profilesTable->item(row, 1)->data(Qt::UserRole).toInt() * 1024; // Convert from KiB/s to bytes/s
+            profile.uploadLimit = m_profilesTable->item(row, 2)->data(Qt::UserRole).toInt() * 1024;
+            profiles.append(profile);
+        }
+        pref->setSpeedProfiles(profiles);
+    }
+
+    // Save schedule entries
+    if (m_schedulesTable)
+    {
+        QList<SpeedSchedule::ScheduleEntry> entries;
+        for (int row = 0; row < m_schedulesTable->rowCount(); ++row)
+        {
+            SpeedSchedule::ScheduleEntry entry;
+            entry.startTime = m_schedulesTable->item(row, 0)->data(Qt::UserRole).toTime();
+            entry.endTime = m_schedulesTable->item(row, 1)->data(Qt::UserRole).toTime();
+            entry.days = static_cast<Scheduler::Days>(m_schedulesTable->item(row, 2)->data(Qt::UserRole).toInt());
+            entry.profileName = m_schedulesTable->item(row, 3)->text();
+            entries.append(entry);
+        }
+        pref->setScheduleEntries(entries);
+    }
+
+    // Save default profile
+    if (m_defaultProfileCombo && m_defaultProfileCombo->currentIndex() >= 0)
+        pref->setDefaultSpeedProfile(m_defaultProfileCombo->currentText());
+}
+
+void OptionsDialog::setupSpeedProfileWidgets()
+{
+    // Find the speed tab page and its layout
+    auto *speedTabLayout = qobject_cast<QVBoxLayout *>(m_ui->scrollAreaWidgetContents_9->layout());
+    if (!speedTabLayout)
+        return;
+
+    // Create group box for speed profiles
+    auto *profilesGroupBox = new QGroupBox(tr("Speed Profiles"), this);
+    auto *profilesLayout = new QVBoxLayout(profilesGroupBox);
+
+    // Create profiles table
+    m_profilesTable = new QTableWidget(this);
+    m_profilesTable->setColumnCount(3);
+    m_profilesTable->setHorizontalHeaderLabels({tr("Name"), tr("Download (KiB/s)"), tr("Upload (KiB/s)")});
+    m_profilesTable->horizontalHeader()->setStretchLastSection(true);
+    m_profilesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_profilesTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    profilesLayout->addWidget(m_profilesTable);
+
+    // Create buttons for profiles
+    auto *profileButtonLayout = new QHBoxLayout();
+    m_addProfileButton = new QPushButton(tr("Add"), this);
+    m_editProfileButton = new QPushButton(tr("Edit"), this);
+    m_removeProfileButton = new QPushButton(tr("Remove"), this);
+    m_editProfileButton->setEnabled(false);
+    m_removeProfileButton->setEnabled(false);
+
+    profileButtonLayout->addWidget(m_addProfileButton);
+    profileButtonLayout->addWidget(m_editProfileButton);
+    profileButtonLayout->addWidget(m_removeProfileButton);
+    profileButtonLayout->addStretch();
+    profilesLayout->addLayout(profileButtonLayout);
+
+    speedTabLayout->addWidget(profilesGroupBox);
+
+    // Create group box for schedules
+    auto *schedulesGroupBox = new QGroupBox(tr("Schedule Entries"), this);
+    auto *schedulesLayout = new QVBoxLayout(schedulesGroupBox);
+
+    // Create schedules table
+    m_schedulesTable = new QTableWidget(this);
+    m_schedulesTable->setColumnCount(4);
+    m_schedulesTable->setHorizontalHeaderLabels({tr("Start"), tr("End"), tr("Days"), tr("Profile")});
+    m_schedulesTable->horizontalHeader()->setStretchLastSection(true);
+    m_schedulesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_schedulesTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    schedulesLayout->addWidget(m_schedulesTable);
+
+    // Create buttons for schedules
+    auto *scheduleButtonLayout = new QHBoxLayout();
+    m_addScheduleButton = new QPushButton(tr("Add"), this);
+    m_editScheduleButton = new QPushButton(tr("Edit"), this);
+    m_removeScheduleButton = new QPushButton(tr("Remove"), this);
+    m_editScheduleButton->setEnabled(false);
+    m_removeScheduleButton->setEnabled(false);
+
+    scheduleButtonLayout->addWidget(m_addScheduleButton);
+    scheduleButtonLayout->addWidget(m_editScheduleButton);
+    scheduleButtonLayout->addWidget(m_removeScheduleButton);
+    scheduleButtonLayout->addStretch();
+    schedulesLayout->addLayout(scheduleButtonLayout);
+
+    // Add default profile selection
+    auto *defaultProfileLayout = new QHBoxLayout();
+    auto *defaultProfileLabel = new QLabel(tr("Default profile:"), this);
+    m_defaultProfileCombo = new QComboBox(this);
+    defaultProfileLayout->addWidget(defaultProfileLabel);
+    defaultProfileLayout->addWidget(m_defaultProfileCombo);
+    defaultProfileLayout->addStretch();
+    schedulesLayout->addLayout(defaultProfileLayout);
+
+    speedTabLayout->addWidget(schedulesGroupBox);
+
+    // Connect signals
+    connect(m_profilesTable, &QTableWidget::itemSelectionChanged, this, &ThisType::onProfilesTableSelectionChanged);
+    connect(m_addProfileButton, &QPushButton::clicked, this, &ThisType::on_addProfileButton_clicked);
+    connect(m_editProfileButton, &QPushButton::clicked, this, &ThisType::on_editProfileButton_clicked);
+    connect(m_removeProfileButton, &QPushButton::clicked, this, &ThisType::on_removeProfileButton_clicked);
+
+    connect(m_schedulesTable, &QTableWidget::itemSelectionChanged, this, &ThisType::onSchedulesTableSelectionChanged);
+    connect(m_addScheduleButton, &QPushButton::clicked, this, &ThisType::on_addScheduleButton_clicked);
+    connect(m_editScheduleButton, &QPushButton::clicked, this, &ThisType::on_editScheduleButton_clicked);
+    connect(m_removeScheduleButton, &QPushButton::clicked, this, &ThisType::on_removeScheduleButton_clicked);
+
+    connect(m_profilesTable, &QTableWidget::cellChanged, this, &ThisType::enableApplyButton);
+    connect(m_schedulesTable, &QTableWidget::cellChanged, this, &ThisType::enableApplyButton);
+    connect(m_defaultProfileCombo, qComboBoxCurrentIndexChanged, this, &ThisType::enableApplyButton);
+}
+
+void OptionsDialog::onProfilesTableSelectionChanged()
+{
+    const bool hasSelection = !m_profilesTable->selectedItems().isEmpty();
+    m_editProfileButton->setEnabled(hasSelection);
+    m_removeProfileButton->setEnabled(hasSelection);
+}
+
+void OptionsDialog::on_addProfileButton_clicked()
+{
+    SpeedProfileDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        const SpeedSchedule::SpeedProfile profile = dialog.getProfile();
+
+        // Check for duplicate name
+        for (int row = 0; row < m_profilesTable->rowCount(); ++row)
+        {
+            if (m_profilesTable->item(row, 0)->text() == profile.name)
+            {
+                QMessageBox::warning(this, tr("Duplicate Profile"), tr("A profile with this name already exists."));
+                return;
+            }
+        }
+
+        // Add to table
+        const int row = m_profilesTable->rowCount();
+        m_profilesTable->insertRow(row);
+
+        auto *nameItem = new QTableWidgetItem(profile.name);
+        auto *downloadItem = new QTableWidgetItem(profile.downloadLimit == -1024 ? tr("∞") : QString::number(profile.downloadLimit / 1024));
+        auto *uploadItem = new QTableWidgetItem(profile.uploadLimit == -1024 ? tr("∞") : QString::number(profile.uploadLimit / 1024));
+
+        downloadItem->setData(Qt::UserRole, profile.downloadLimit / 1024);
+        uploadItem->setData(Qt::UserRole, profile.uploadLimit / 1024);
+
+        m_profilesTable->setItem(row, 0, nameItem);
+        m_profilesTable->setItem(row, 1, downloadItem);
+        m_profilesTable->setItem(row, 2, uploadItem);
+
+        // Update default profile combo
+        m_defaultProfileCombo->addItem(profile.name);
+
+        enableApplyButton();
+    }
+}
+
+void OptionsDialog::on_editProfileButton_clicked()
+{
+    const int currentRow = m_profilesTable->currentRow();
+    if (currentRow < 0)
+        return;
+
+    SpeedSchedule::SpeedProfile profile;
+    profile.name = m_profilesTable->item(currentRow, 0)->text();
+    profile.downloadLimit = m_profilesTable->item(currentRow, 1)->data(Qt::UserRole).toInt() * 1024;
+    profile.uploadLimit = m_profilesTable->item(currentRow, 2)->data(Qt::UserRole).toInt() * 1024;
+
+    SpeedProfileDialog dialog(this, &profile);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        const SpeedSchedule::SpeedProfile newProfile = dialog.getProfile();
+
+        // Check for duplicate name (excluding current row)
+        for (int row = 0; row < m_profilesTable->rowCount(); ++row)
+        {
+            if (row != currentRow && m_profilesTable->item(row, 0)->text() == newProfile.name)
+            {
+                QMessageBox::warning(this, tr("Duplicate Profile"), tr("A profile with this name already exists."));
+                return;
+            }
+        }
+
+        // Update table
+        m_profilesTable->item(currentRow, 0)->setText(newProfile.name);
+        m_profilesTable->item(currentRow, 1)->setText(newProfile.downloadLimit == -1024 ? tr("∞") : QString::number(newProfile.downloadLimit / 1024));
+        m_profilesTable->item(currentRow, 1)->setData(Qt::UserRole, newProfile.downloadLimit / 1024);
+        m_profilesTable->item(currentRow, 2)->setText(newProfile.uploadLimit == -1024 ? tr("∞") : QString::number(newProfile.uploadLimit / 1024));
+        m_profilesTable->item(currentRow, 2)->setData(Qt::UserRole, newProfile.uploadLimit / 1024);
+
+        // Update default profile combo if name changed
+        if (profile.name != newProfile.name)
+        {
+            const int comboIndex = m_defaultProfileCombo->findText(profile.name);
+            if (comboIndex >= 0)
+                m_defaultProfileCombo->setItemText(comboIndex, newProfile.name);
+        }
+
+        enableApplyButton();
+    }
+}
+
+void OptionsDialog::on_removeProfileButton_clicked()
+{
+    const int currentRow = m_profilesTable->currentRow();
+    if (currentRow < 0)
+        return;
+
+    const QString profileName = m_profilesTable->item(currentRow, 0)->text();
+
+    // Check if profile is used in any schedule
+    for (int row = 0; row < m_schedulesTable->rowCount(); ++row)
+    {
+        if (m_schedulesTable->item(row, 3)->text() == profileName)
+        {
+            QMessageBox::warning(this, tr("Profile In Use"),
+                tr("This profile is used in a schedule entry. Please remove the schedule entry first."));
+            return;
+        }
+    }
+
+    m_profilesTable->removeRow(currentRow);
+
+    // Remove from default profile combo
+    const int comboIndex = m_defaultProfileCombo->findText(profileName);
+    if (comboIndex >= 0)
+        m_defaultProfileCombo->removeItem(comboIndex);
+
+    enableApplyButton();
+}
+
+void OptionsDialog::onSchedulesTableSelectionChanged()
+{
+    const bool hasSelection = !m_schedulesTable->selectedItems().isEmpty();
+    m_editScheduleButton->setEnabled(hasSelection);
+    m_removeScheduleButton->setEnabled(hasSelection);
+}
+
+void OptionsDialog::on_addScheduleButton_clicked()
+{
+    // Get list of available profiles
+    QStringList profileNames;
+    for (int row = 0; row < m_profilesTable->rowCount(); ++row)
+        profileNames.append(m_profilesTable->item(row, 0)->text());
+
+    if (profileNames.isEmpty())
+    {
+        QMessageBox::information(this, tr("No Profiles"), tr("Please create at least one speed profile first."));
+        return;
+    }
+
+    ScheduleEntryDialog dialog(this, profileNames);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        const SpeedSchedule::ScheduleEntry entry = dialog.getEntry();
+
+        // Add to table
+        const int row = m_schedulesTable->rowCount();
+        m_schedulesTable->insertRow(row);
+
+        auto *startItem = new QTableWidgetItem(entry.startTime.toString(u"HH:mm"_s));
+        auto *endItem = new QTableWidgetItem(entry.endTime.toString(u"HH:mm"_s));
+        auto *daysItem = new QTableWidgetItem(translatedWeekdayNames().value(static_cast<int>(entry.days), tr("Every day")));
+        auto *profileItem = new QTableWidgetItem(entry.profileName);
+
+        startItem->setData(Qt::UserRole, entry.startTime);
+        endItem->setData(Qt::UserRole, entry.endTime);
+        daysItem->setData(Qt::UserRole, static_cast<int>(entry.days));
+
+        m_schedulesTable->setItem(row, 0, startItem);
+        m_schedulesTable->setItem(row, 1, endItem);
+        m_schedulesTable->setItem(row, 2, daysItem);
+        m_schedulesTable->setItem(row, 3, profileItem);
+
+        enableApplyButton();
+    }
+}
+
+void OptionsDialog::on_editScheduleButton_clicked()
+{
+    const int currentRow = m_schedulesTable->currentRow();
+    if (currentRow < 0)
+        return;
+
+    // Get list of available profiles
+    QStringList profileNames;
+    for (int row = 0; row < m_profilesTable->rowCount(); ++row)
+        profileNames.append(m_profilesTable->item(row, 0)->text());
+
+    SpeedSchedule::ScheduleEntry entry;
+    entry.startTime = m_schedulesTable->item(currentRow, 0)->data(Qt::UserRole).toTime();
+    entry.endTime = m_schedulesTable->item(currentRow, 1)->data(Qt::UserRole).toTime();
+    entry.days = static_cast<Scheduler::Days>(m_schedulesTable->item(currentRow, 2)->data(Qt::UserRole).toInt());
+    entry.profileName = m_schedulesTable->item(currentRow, 3)->text();
+
+    ScheduleEntryDialog dialog(this, profileNames, &entry);
+    if (dialog.exec() == QDialog::Accepted)
+    {
+        const SpeedSchedule::ScheduleEntry newEntry = dialog.getEntry();
+
+        // Update table
+        m_schedulesTable->item(currentRow, 0)->setText(newEntry.startTime.toString(u"HH:mm"_s));
+        m_schedulesTable->item(currentRow, 0)->setData(Qt::UserRole, newEntry.startTime);
+        m_schedulesTable->item(currentRow, 1)->setText(newEntry.endTime.toString(u"HH:mm"_s));
+        m_schedulesTable->item(currentRow, 1)->setData(Qt::UserRole, newEntry.endTime);
+        m_schedulesTable->item(currentRow, 2)->setText(translatedWeekdayNames().value(static_cast<int>(newEntry.days), tr("Every day")));
+        m_schedulesTable->item(currentRow, 2)->setData(Qt::UserRole, static_cast<int>(newEntry.days));
+        m_schedulesTable->item(currentRow, 3)->setText(newEntry.profileName);
+
+        enableApplyButton();
+    }
+}
+
+void OptionsDialog::on_removeScheduleButton_clicked()
+{
+    const int currentRow = m_schedulesTable->currentRow();
+    if (currentRow < 0)
+        return;
+
+    m_schedulesTable->removeRow(currentRow);
+    enableApplyButton();
 }
 
 void OptionsDialog::loadBittorrentTabOptions()
